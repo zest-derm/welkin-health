@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -8,7 +10,6 @@ from welkin.models.calendar import (
     CalendarEvents,
     Schedule,
     Schedules,
-    WorkHours,
 )
 
 UTC = timezone.utc
@@ -16,7 +17,7 @@ UTC = timezone.utc
 
 @pytest.mark.vcr
 def test_calendar_event_create(client, vcr_cassette):
-    start = datetime.now(tz=UTC) + timedelta(hours=6)
+    start = datetime(2022, 6, 30, 17, 59, 47, 790000, tzinfo=UTC)
     end = start + timedelta(hours=1)
 
     event = client.CalendarEvent(

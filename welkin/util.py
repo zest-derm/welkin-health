@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 from datetime import date, datetime, timezone
 from functools import lru_cache, wraps
-from typing import Any, Callable, Tuple, Union
+from typing import Any, Callable
 from uuid import UUID
 
 import inflection
+from requests.utils import to_key_val_list
 
 from welkin.models.base import Collection, Resource, SchemaBase
 
@@ -20,7 +23,9 @@ class Target:
         _build_resources(self, "_client", self._client)
 
 
-def _build_resources(instance: type, attribute_name: str, value: type = None) -> None:
+def _build_resources(
+    instance: type, attribute_name: str, value: type | None = None
+) -> None:
     """Add an attribute pointing to an instance for each resource.
 
     Args:
@@ -54,13 +59,13 @@ def clean_data(value: Any) -> Any:
     """
     if isinstance(value, datetime):
         return clean_datetime(value)
-    elif isinstance(value, date):
+    if isinstance(value, date):
         return clean_date(value)
-    elif isinstance(value, dict):
+    if isinstance(value, dict):
         return clean_request_payload(value)
-    elif isinstance(value, list):
+    if isinstance(value, list):
         return clean_json_list(value)
-    elif isinstance(value, UUID):
+    if isinstance(value, UUID):
         return str(value)
 
     # No cleaning needed
@@ -112,7 +117,7 @@ def clean_datetime(dt: datetime) -> str:
     )
 
 
-def find_model_id(instance: Union[Collection, Resource], model_name: str) -> str:
+def find_model_id(instance: Collection | Resource, model_name: str) -> str:
     """Recursively traverse the `_parent` chain searching for a model id.
 
     Args:
@@ -129,9 +134,9 @@ def find_model_id(instance: Union[Collection, Resource], model_name: str) -> str
 
     if instance.__class__.__name__ == model_name:
         return instance.id
-    elif hasattr(instance, body_id_key):
+    if hasattr(instance, body_id_key):
         return getattr(instance, body_id_key)
-    elif instance._parent is not None:
+    if instance._parent is not None:
         return find_model_id(instance._parent, model_name)
 
     raise AttributeError(
@@ -139,11 +144,11 @@ def find_model_id(instance: Union[Collection, Resource], model_name: str) -> str
     )
 
 
-def model_id(*models: Tuple[str]) -> Callable:
+def model_id(*models: tuple[str]) -> Callable:
     """Insert values for `model_id` arguments if not provided.
 
     Args:
-        *models (Tuple[str]): The model names to search for.
+        *models (tuple[str]): The model names to search for.
 
     Raises:
         TypeError: If no ID is found and no arguments are provided.
@@ -176,7 +181,32 @@ def model_id(*models: Tuple[str]) -> Callable:
     return decorator
 
 
-@lru_cache(maxsize=None)
+def reset_file_offsets(files: list) -> None:
+    """Reset file-like objects to the beginning of the file.
+
+    Args:
+        files (list): The list of files from the request.
+    """
+    file_info_with_name = 2
+    file_info_with_content_type = 3
+
+    # Similar to requests.models.RequestEncodingMixin._encode_files
+    for _, file_info in to_key_val_list(files):
+        if isinstance(file_info, (tuple, list)):
+            if len(file_info) == file_info_with_name:
+                fn, fp = file_info
+            elif len(file_info) == file_info_with_content_type:
+                fn, fp, ft = file_info
+            else:
+                fn, fp, ft, fh = file_info
+        else:
+            fp = file_info
+
+        if hasattr(fp, "seek"):
+            fp.seek(0)
+
+
+@lru_cache
 def to_camel_case(s: str) -> str:
     """Convert a string to camelCase.
 
@@ -189,7 +219,7 @@ def to_camel_case(s: str) -> str:
     return inflection.camelize(to_snake_case(s), uppercase_first_letter=False)
 
 
-@lru_cache(maxsize=None)
+@lru_cache
 def to_snake_case(s: str) -> str:
     """Convert a string to snake_case.
 

@@ -1,7 +1,11 @@
+from __future__ import annotations
+
 import copy
 import sys
+from io import BytesIO
 
 import pytest
+from requests import Request
 
 from welkin.util import (
     clean_date,
@@ -10,6 +14,7 @@ from welkin.util import (
     clean_request_params,
     clean_request_payload,
     find_model_id,
+    reset_file_offsets,
     to_camel_case,
     to_snake_case,
 )
@@ -17,7 +22,7 @@ from welkin.util import (
 
 class TestCleanRequestPayload:
     @pytest.fixture
-    def payload(self, _uuid, base_date, utc_datetime, pst_datetime):
+    def payload(self, uuid4, base_date, utc_datetime, pst_datetime):
         return {
             "datetime": pst_datetime,
             "date": base_date,
@@ -30,12 +35,12 @@ class TestCleanRequestPayload:
             "int": [-sys.maxsize, 0, sys.maxsize],
             "float": [sys.float_info.min, 1, sys.float_info.max],
             "bool": [True, False],
-            "_uuid4": _uuid,
+            "uuid4": uuid4,
             "none": None,
         }
 
     def test_clean_request_payload(
-        self, payload, _uuid, pst_datetime_str, base_date_str, utc_datetime_str
+        self, payload, uuid4, pst_datetime_str, base_date_str, utc_datetime_str
     ):
         payload_copy = copy.deepcopy(payload)
         cleaned = clean_request_payload(payload)
@@ -45,7 +50,7 @@ class TestCleanRequestPayload:
         assert cleaned["date"] == base_date_str
         assert cleaned["dict"]["nested"]["date"] == base_date_str
         assert cleaned["list"][0] == utc_datetime_str
-        assert cleaned["_uuid4"] == str(_uuid)
+        assert cleaned["uuid4"] == str(uuid4)
 
 
 class TestCleanJsonList:
@@ -93,25 +98,60 @@ class TestCleanRequestParams:
         assert cleaned["list"] == "foo,bar,baz"
 
 
+class TestResetFileOffsets:
+    @pytest.fixture
+    def file(self) -> BytesIO:
+        file = BytesIO(b"foo\nbar\nbaz")
+        file.seek(1)
+
+        return file
+
+    @pytest.fixture
+    def file_info(self, file):
+        return {"files": file}
+
+    @pytest.fixture
+    def file_info_with_name(self, file: BytesIO):
+        return [("files", ("file.txt", file))]
+
+    @pytest.fixture
+    def file_info_with_content_type(self, file: BytesIO):
+        return [("files", ("file.txt", file, "text/plain"))]
+
+    @pytest.fixture
+    def file_info_with_content_type_and_headers(self, file: BytesIO):
+        return [("files", ("file.txt", file, "text/plain", {"Expires": "0"}))]
+
+    @pytest.fixture(
+        params=[
+            "file_info",
+            "file_info_with_name",
+            "file_info_with_content_type",
+            "file_info_with_content_type_and_headers",
+        ]
+    )
+    def mock_request(self, request: pytest.FixtureRequest) -> Request:
+        return Request(
+            "POST", "https://example.com", files=request.getfixturevalue(request.param)
+        )
+
+    def test_reset_file_offsets(self, file, mock_request: Request):
+        assert file.tell() == 1
+
+        reset_file_offsets(mock_request.files)
+        assert file.tell() == 0
+
+
 def test_clean_date(base_date, base_date_str):
     assert clean_date(base_date) == base_date_str
 
 
 @pytest.mark.parametrize(
-    "dt,expected",
+    ("dt", "expected"),
     [
-        (
-            "utc_datetime",
-            "utc_datetime_str",
-        ),
-        (
-            "pst_datetime",
-            "pst_datetime_str",
-        ),
-        (
-            "est_datetime",
-            "est_datetime_str",
-        ),
+        ("utc_datetime", "utc_datetime_str"),
+        ("pst_datetime", "pst_datetime_str"),
+        ("est_datetime", "est_datetime_str"),
     ],
 )
 def test_clean_datetime(dt, expected, request):
@@ -120,7 +160,7 @@ def test_clean_datetime(dt, expected, request):
 
 
 @pytest.mark.parametrize(
-    "input",
+    "string",
     [
         "foo_bar",
         "fooBar",
@@ -130,9 +170,9 @@ def test_clean_datetime(dt, expected, request):
         "FOOBar",
     ],
 )
-def test_case_converters(input):
-    assert to_camel_case(input) == "fooBar"
-    assert to_snake_case(input) == "foo_bar"
+def test_case_converters(string):
+    assert to_camel_case(string) == "fooBar"
+    assert to_snake_case(string) == "foo_bar"
 
 
 def test_find_model_id(client):

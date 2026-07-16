@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -13,7 +15,7 @@ UTC = timezone.utc
 @pytest.mark.vcr
 def test_encounter_create(client, vcr_cassette):
     patient = client.Patient(id="371dd15c-cedc-4425-a394-d666c8d3fc01")
-    start = datetime.now(tz=UTC) + timedelta(hours=6)
+    start = datetime(2022, 7, 26, 20, 6, 33, 744000, tzinfo=UTC)
     end = start + timedelta(hours=1)
 
     data = {
@@ -121,8 +123,7 @@ def test_encounter_delete(client, vcr_cassette):
     with pytest.raises(WelkinHTTPError) as excinfo:
         encounter.get()
 
-        assert excinfo.value.response.status_code == 404
-
+    assert excinfo.value.response.status_code == 404
     assert len(vcr_cassette) == 3
 
 
@@ -242,8 +243,7 @@ def test_encounter_assessment_delete(client, vcr_cassette):
     with pytest.raises(WelkinHTTPError) as excinfo:
         assessment.get()
 
-        assert excinfo.value.response.status_code == 404
-
+    assert excinfo.value.response.status_code == 404
     assert len(vcr_cassette) == 2
 
 
